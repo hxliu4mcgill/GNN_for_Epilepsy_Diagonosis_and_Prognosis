@@ -38,7 +38,7 @@ def get_color(i):
         return '#FF0000'  #   'red'             Subcortical皮下
 
 
-def analysis(argv):
+def analysis(argv, endwith):
     path = os.path.join(argv.targetdir, 'saliency')
     if not os.path.isdir(path):
         print('No saliency map!')
@@ -46,19 +46,19 @@ def analysis(argv):
     files = os.listdir(path)
 
     for i in files:
-        if i.endswith('hc_x.npy'):
+        if i.endswith('hc_x{}.npy'.format(endwith)):
             hc_x = np.load(os.path.join(path, i))
             break
     for i in files:
-        if i.endswith('hc_z.npy'):
+        if i.endswith('hc_z{}.npy'.format(endwith)):
             hc_z = np.load(os.path.join(path, i))
             break
     for i in files:
-        if i.endswith('tle_x.npy'):
+        if i.endswith('tle_x{}.npy'.format(endwith)):
             tle_x = np.load(os.path.join(path, i))
             break
     for i in files:
-        if i.endswith('tle_z.npy'):
+        if i.endswith('tle_z{}.npy'.format(endwith)):
             tle_z = np.load(os.path.join(path, i))
             break
 
@@ -76,7 +76,7 @@ def analysis(argv):
 
     # 筛选目标node
     tle_x_ = abs(tle_x.squeeze(0))
-    full_sort = np.argsort(-tle_x_)
+    full_sort = np.argsort(-tle_x_) + 1
     threshold_idx = full_sort.take(np.arange(topk))
     threshold = tle_x_[threshold_idx[-1]]
 
@@ -86,7 +86,8 @@ def analysis(argv):
     region_axis = np.zeros((len(threshold_idx), 3))
     count = 0
     for i in threshold_idx:
-        ceil_value = sheet.row_slice(i, 0, 3)
+        # test = sheet.row_slice(245, 0, 3)
+        ceil_value = sheet.row_slice(i - 1, 0, 3)
         for cols, axis in enumerate(ceil_value):
             axis = int(axis.value)
             region_axis[count][cols] = axis
@@ -114,7 +115,7 @@ def analysis(argv):
 
 
     # plot edge:
-    topk = int(246 * 245 * 0.5 * 0.002)
+    topk = int(246 * 245 * 0.5 * 0.001)
     tle_z = abs(tle_z)
     tle_z_T = tle_z.transpose()
     atteMatrix = (tle_z_T + tle_z) / 2
@@ -174,9 +175,9 @@ def analysis(argv):
     plt.show()
     # print()
 
-    save_edge_excel(argv, x, y, val)
+    save_edge_excel(argv, x, y, val, endwith)
 
-def save_edge_excel(argv, x, y, val):
+def save_edge_excel(argv, x, y, val, endwith):
     path = r'F:\KeYan\癫痫\figure\{}'.format(argv.roi)
     if not os.path.isdir(path):
         os.makedirs(path, exist_ok=True)
@@ -192,12 +193,12 @@ def save_edge_excel(argv, x, y, val):
     df = pd.DataFrame(data)
 
     # 将数据帧保存到Excel文件
-    df.to_csv(os.path.join(path, 'connection.csv'), index=False)
+    df.to_csv(os.path.join(path, 'connection{}.csv'.format(endwith)), index=False)
 
     return
 
 if __name__=='__main__':
     # parse options and make directories
     argv = util.option.parse()
-    analysis(argv)
+    analysis(argv, endwith='_l')
     exit()

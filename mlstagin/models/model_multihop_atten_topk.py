@@ -266,7 +266,8 @@ class ModelSTAGIN(nn.Module):
             self.diffusion.append(MultiHopAttention(hidden_dim, hidden_dim, hop_num=hop_num, alpha=0.15))
             self.readout_modules.append(readout_module(hidden_dim=hidden_dim, input_dim=input_dim, dropout=0.1))
             self.transformer_modules.append(ModuleTransformer(hidden_dim, 2*hidden_dim, num_heads=num_heads, dropout=0.1))
-            self.linear_layers.append(nn.Linear(hidden_dim, num_classes))
+            self.linear_layers.append(nn.Sequential(nn.Dropout(dropout), nn.Linear(hidden_dim, num_classes)))
+            # self.linear_layers.append(nn.Linear(hidden_dim, num_classes))
 
         self.head = nn.Linear(hidden_dim * num_layers, int(hidden_dim / 2))
         self.classifier=nn.Sequential(nn.Dropout(dropout), nn.Linear(hidden_dim * num_layers, num_classes))

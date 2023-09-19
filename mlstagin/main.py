@@ -12,8 +12,6 @@ from visualization import analysis
 from analysis import analyze
 import torch
 
-
-
 if __name__=='__main__':
     # parse options and make directories
     argv = util.option.parse()
@@ -26,13 +24,13 @@ if __name__=='__main__':
         torch.backends.cudnn.deterministic = True
     setup_seed(argv.seed)
     # step1
-    if not argv.no_train: train(argv)
+    # if not argv.no_train: train(argv)
     # step2
-    if not argv.no_test: test(argv)
+    # if not argv.no_test: test(argv)
     # step3
-    # saliency_map(argv)
-    # # step4
-    # analysis(argv)
+    saliency_map(argv)
+    # step4
+    # analysis(argv, endwith='')
 
     # if not argv.no_analysis and argv.roi=='schaefer': analyze(argv)
 

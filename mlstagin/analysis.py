@@ -7,7 +7,7 @@ import seaborn as sns
 from copy import deepcopy
 from tqdm import tqdm
 from util import bold, option
-from dataset import DatasetHCPRest, DatasetHCPTask, DatasetXiangyaRest
+from dataset import DatasetXiangyaRest
 from torch import save, load
 from torch.utils.data import DataLoader
 from sklearn.cluster import KMeans

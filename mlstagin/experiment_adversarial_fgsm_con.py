@@ -20,7 +20,7 @@ import collections
 def step(model, criterion, dyn_v, dyn_a, sampling_endpoints, t, label, reg_lambda, clip_grad=0.0, device='cpu', optimizer=None, scheduler=None, con_criterion=None):
     if optimizer is None: model.eval()
     else: model.train()
-    alpha = 1e-2
+    alpha = 1e-4
     if optimizer is not None:
         eps_selection = [0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2]
         eps = eps_selection[3]
@@ -36,6 +36,7 @@ def step(model, criterion, dyn_v, dyn_a, sampling_endpoints, t, label, reg_lambd
         loss = criterion(logit, label_) + alpha * con_loss
         model.zero_grad()
 
+        #
         # loss.backward(retain_graph=True)
         # sign_grad_v = torch.sign(dyn_v_.grad.data)
         # sign_grad_a = torch.sign(dyn_a_.grad.data)
@@ -48,7 +49,7 @@ def step(model, criterion, dyn_v, dyn_a, sampling_endpoints, t, label, reg_lambd
         # perturbed_t = torch.clamp(perturbed_t, -1, 1)
         # logit, attention, latent, reg_ortho, _ = model(perturbed_v, perturbed_a, perturbed_t, sampling_endpoints)
         # con_loss = con_criterion(latent, label_)
-        # loss = 0.5 * ((1-alpha) * criterion(logit, label_) + alpha * con_loss + loss)
+        # loss = 0.5 * (criterion(logit, label_) + alpha * con_loss + loss)
 
     else:
         logit, attention, latent, reg_ortho, _ = model(dyn_v.to(device), dyn_a.to(device), t.to(device),sampling_endpoints)
@@ -70,8 +71,6 @@ def step(model, criterion, dyn_v, dyn_a, sampling_endpoints, t, label, reg_lambd
 
 
 def train(argv):
-
-
     # make directories
     os.makedirs(os.path.join(argv.targetdir, 'model'), exist_ok=True)
     os.makedirs(os.path.join(argv.targetdir, 'summary'), exist_ok=True)
@@ -87,9 +86,10 @@ def train(argv):
         device = torch.device("cpu")
 
     # define dataset
-    if argv.dataset=='rest': dataset = DatasetHCPRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
-    elif argv.dataset=='task': dataset = DatasetHCPTask(argv.sourcedir, roi=argv.roi, dynamic_length=argv.dynamic_length, k_fold=argv.k_fold)
+    if argv.dataset=='xyzd': dataset = DatasetXYZDRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
+    elif argv.dataset=='zhengda': dataset = DatasetZhengdaRest(argv.sourcedir, roi=argv.roi,k_fold=argv.k_fold)
     elif argv.dataset == 'xiangya':dataset = DatasetXiangyaRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
+    elif argv.dataset == 'loso': dataset = DatasetLOSO(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
     else: raise
 
     # class_sample_count = torch.tensor([181, 273])
@@ -293,10 +293,12 @@ def test(argv):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # define dataset
-    if argv.dataset=='rest': dataset = DatasetHCPRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
-    elif argv.dataset=='task': dataset = DatasetHCPTask(argv.sourcedir, roi=argv.roi, dynamic_length=argv.dynamic_length, k_fold=argv.k_fold)
+    if argv.dataset=='xyzd': dataset = DatasetXYZDRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
+    elif argv.dataset=='zhengda': dataset = DatasetZhengdaRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold)
     elif argv.dataset == 'xiangya': dataset = DatasetXiangyaRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
+    elif argv.dataset == 'loso': dataset = DatasetLOSO(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
     else: raise
+
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
     logger = util.logger.LoggerSTAGIN(argv.k_fold, dataset.num_classes)
 

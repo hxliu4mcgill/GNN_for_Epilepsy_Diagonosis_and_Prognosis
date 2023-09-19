@@ -50,12 +50,6 @@ def step(model, criterion, dyn_v, dyn_a, sampling_endpoints, t, label, reg_lambd
     grad_X = np.mean(grad_X, axis=-1)
     grad_Z = np.mean(grad_Z, axis=0)
     grad_t = np.mean(grad_t, axis=0, keepdims=True)
-    # if label == torch.FloatTensor([0]).item():
-    #     result_tdc_x += grad_X
-    #     result_tdc_z += grad_Z
-    # else:
-    #     result_asd_x += grad_X
-    #     result_asd_z += grad_Z
 
     return logit, 0, attention, latent, reg_ortho, grad_X, grad_Z, grad_t, label
 
@@ -88,24 +82,41 @@ def grad(argv):
     node_num = 246
     # hidden_dim = argv.hidden_dim
     hidden_dim = 1
-    Result_TLE_X, Result_HC_X = np.zeros((hidden_dim, node_num)), np.zeros((hidden_dim, node_num))
-    Result_TLE_Z, Result_HC_Z = np.zeros((node_num, node_num)), np.zeros((node_num, node_num))
+    if argv.laterality:
+        Result_TLE_X_L, Result_TLE_X_R, Result_HC_X = np.zeros((hidden_dim, node_num)), np.zeros((hidden_dim, node_num)),np.zeros((hidden_dim, node_num))
+        Result_TLE_Z_L, Result_TLE_Z_R, Result_HC_Z = np.zeros((node_num, node_num)),np.zeros((node_num, node_num)), np.zeros((node_num, node_num))
+    else:
+        Result_TLE_X, Result_HC_X = np.zeros((hidden_dim, node_num)), np.zeros((hidden_dim, node_num))
+        Result_TLE_Z, Result_HC_Z = np.zeros((node_num, node_num)), np.zeros((node_num, node_num))
+
+    if argv.outcome:
+        Result_TLE_X_SF, Result_TLE_X_NSF= np.zeros((36,hidden_dim, node_num)), np.zeros((26, hidden_dim, node_num))
+        Result_TLE_Z_SF, Result_TLE_Z_NSF = np.zeros((36, node_num, node_num)), np.zeros((26, node_num, node_num))
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # define dataset
-    if argv.dataset=='rest': dataset = DatasetHCPRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
-    elif argv.dataset=='task': dataset = DatasetHCPTask(argv.sourcedir, roi=argv.roi, dynamic_length=argv.dynamic_length, k_fold=argv.k_fold)
-    elif argv.dataset == 'xiangya': dataset = DatasetXiangyaRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
+    if argv.dataset=='xyzd': dataset = DatasetXYZDRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, smoothing_fwhm=argv.fwhm)
+    elif argv.dataset=='zhengda': dataset = DatasetZhengdaRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold)
+    elif argv.dataset == 'xiangya': dataset = DatasetXiangyaRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, laterality=argv.laterality, outcome=argv.outcome)
     else: raise
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
     logger = util.logger.LoggerSTAGIN(argv.k_fold, dataset.num_classes)
 
+    sf_sub_idx = 0
+    nsf_sub_idx = 0
     for k in range(argv.k_fold):
-        result_tle_x = np.zeros((hidden_dim, node_num))
-        result_tle_z = np.zeros((node_num, node_num))
         result_hc_x = np.zeros((hidden_dim, node_num))
         result_hc_z = np.zeros((node_num, node_num))
+        if argv.laterality:
+            result_tle_x_l = np.zeros((hidden_dim, node_num))
+            result_tle_z_l = np.zeros((node_num, node_num))
+            result_tle_x_r = np.zeros((hidden_dim, node_num))
+            result_tle_z_r = np.zeros((node_num, node_num))
+        else:
+            result_tle_x = np.zeros((hidden_dim, node_num))
+            result_tle_z = np.zeros((node_num, node_num))
+
 
         os.makedirs(os.path.join(argv.targetdir, 'attention', str(k)), exist_ok=True)
         os.makedirs(os.path.join(argv.targetdir, 'saliency', str(k)), exist_ok=True)
@@ -130,6 +141,13 @@ def grad(argv):
 
         logger.initialize(k)
         dataset.set_fold(k, train=False)
+        # num_sample = len(dataloader.dataset)
+        # if argv.outcome:
+        #     result_tle_x_nsf = np.zeros((num_sample, hidden_dim, node_num))
+        #     result_tle_z_nsf = np.zeros((num_sample, node_num, node_num))
+        #     result_tle_x_sf = np.zeros((num_sample, hidden_dim, node_num))
+        #     result_tle_z_sf = np.zeros((num_sample, node_num, node_num))
+
         loss_accumulate = 0.0
         reg_ortho_accumulate = 0.0
         latent_accumulate = []
@@ -161,16 +179,51 @@ def grad(argv):
             prob = logit.softmax(1)
 
             # reg_ortho_accumulate += reg_ortho.detach().cpu().numpy()
+            # 每折下所有被试相加
+            # 正常人
             if label == torch.FloatTensor([0]).item():
                 a = grad_X + grad_T
                 result_hc_x += a
                 result_hc_z += grad_Z
+            # 病人  而且如果分侧别
+            elif argv.laterality: # L:0 R:1
+                a = x['side']
+                if x['side'] == 0:
+                    result_tle_x_l += grad_X + grad_T
+                    result_tle_z_l += grad_Z
+                else:
+                    result_tle_x_r += grad_X + grad_T
+                    result_tle_z_r += grad_Z
+
+            # 病人 而且 如果不分测别
             else:
                 result_tle_x += grad_X + grad_T
                 result_tle_z += grad_Z
 
-        Result_TLE_X += result_tle_x
-        Result_TLE_Z += result_tle_z
+            # 病人 而且 如果分术后疗效
+            if label == torch.FloatTensor([1]).item() and argv.outcome: # SF:0 NSF:1
+                if x['outcome'] == 0:
+                    Result_TLE_X_SF[sf_sub_idx] = grad_X + grad_T
+                    Result_TLE_Z_SF[sf_sub_idx] = grad_Z
+                    sf_sub_idx += 1
+                elif x['outcome'] == 1:
+                    Result_TLE_X_NSF[nsf_sub_idx] = grad_X + grad_T
+                    Result_TLE_Z_NSF[nsf_sub_idx] = grad_Z
+                    nsf_sub_idx += 1
+            print(sf_sub_idx)
+            print(nsf_sub_idx)
+
+
+        # 所有折相加
+        if argv.laterality:
+            Result_TLE_X_L += result_tle_x_l
+            Result_TLE_X_R += result_tle_x_r
+            Result_TLE_Z_L += result_tle_z_l
+            Result_TLE_Z_R += result_tle_z_r
+        else:
+            Result_TLE_X += result_tle_x
+            Result_TLE_Z += result_tle_z
+
         Result_HC_X += result_hc_x
         Result_HC_Z += result_hc_z
 
@@ -185,8 +238,21 @@ def grad(argv):
     #     pass
     # else:
     #     print("文件路径错误或文件不存在")
-    np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_x.npy'), Result_TLE_X)
-    np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_z.npy'), Result_TLE_Z)
+    if argv.laterality:
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_x_l.npy'), Result_TLE_X_L)
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_z_l.npy'), Result_TLE_Z_L)
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_x_r.npy'), Result_TLE_X_R)
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_z_r.npy'), Result_TLE_Z_R)
+    else:
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_x.npy'), Result_TLE_X)
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_z.npy'), Result_TLE_Z)
+
+    if argv.outcome:
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_x_sf.npy'), Result_TLE_X_SF)
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_z_sf.npy'), Result_TLE_Z_SF)
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_x_nsf.npy'), Result_TLE_X_NSF)
+        np.save(os.path.join(argv.targetdir, r'saliency\adTrained_tle_z_nsf.npy'), Result_TLE_Z_NSF)
+
     np.save(os.path.join(argv.targetdir, r'saliency\adTrained_hc_x.npy'), Result_HC_X)
     np.save(os.path.join(argv.targetdir, r'saliency\adTrained_hc_z.npy'), Result_HC_Z)
     return
@@ -225,7 +291,9 @@ def saliency_map(argv):
         torch.backends.cudnn.deterministic = True
     setup_seed(argv.seed)
     grad(argv)
-    exit(0)
+    # exit(0)
+
+
     # ## gradient-basedfor
     # featuresMap=list()
     # # all_site=os.listdir(cpac_root)
